@@ -9,9 +9,9 @@ services:
     container_name: invoice_manager_backend
     restart: always
     ports:
-      - "41260:5000" # 映射宿主机 5000 端口到容器 5000 端口
+      - "5000:5000" # 映射宿主机 5000 端口到容器 5000 端口
     volumes:
       # 将宿主机 ./data 目录映射到容器 /app/data，用于持久化存储 DB 和发票文件
-      - /mnt/-4/Configs/invoices/data:/app/data 
+      - {$path}/data:/app/data 
       # 挂载 /tmp 目录，因为 Flask 应用在处理文件时使用了 /tmp 临时存储
-      - /mnt/-4/Configs/invoices/tmp:/tmp
+      - /{$path}/tmp:/tmp

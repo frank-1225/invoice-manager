@@ -66,16 +66,18 @@
                         <th scope="col">对公转账?</th>
                         <th scope="col">发票号码</th>
                         <th scope="col">开票日期</th>
-                        <th scope="col">价税合计 (RMB)</th>
+                        <th scope="col">项目名称</th>
+                        <th scope="col">价税合计</th>
                         <th scope="col">销售方</th>
-                        <th scope="col">重命名文件</th>
                         <th scope="col">附件</th>
+                        <th scope="col" style="min-width: 100px;">发票备注</th>
+                        <th scope="col" style="min-width: 150px;">批注</th>
                         <th scope="col">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for invoice in invoices %}
-                    <tr>
+                    <tr id="invoice-row-{{ invoice.id }}">
                         <td>
                             <input type="checkbox" name="invoice_ids" value="{{ invoice.id }}" form="batch_action_form">
                         </td>
@@ -109,15 +111,9 @@
                         </td>
                         <td>{{ invoice.invoice_num or 'N/A' }}</td>
                         <td>{{ invoice.invoice_date or 'N/A' }}</td>
+                        <td>{{ invoice.item_name or 'N/A' }}</td>
                         <td>{{ "¥ {:,.2f}".format(invoice.total_figuers) if invoice.total_figuers > 0 else 'N/A' }}</td>
                         <td>{{ invoice.seller_name or 'N/A' }}</td>
-                        <td>
-                            {% if invoice.new_file_name %}
-                                {{ invoice.new_file_name }}
-                            {% else %}
-                                <span class="text-muted">N/A</span>
-                            {% endif %}
-                        </td>
                         <td>
                             {% for attachment in invoice.attachments %}
                                 <div class="d-flex align-items-center mb-1">
@@ -133,9 +129,30 @@
                                 <button type="submit" class="btn btn-sm btn-info mt-1 w-100">上传附件</button>
                             </form>
                         </td>
+
+                        <td style="min-width: 100px; max-width: 200px;">
+                            <p class="text-break mb-0">
+                                <small>{{ invoice.remarks or '无备注' }}</small>
+                            </p>
+                        </td>
+                        
+                        <td style="min-width: 160px; max-width: 250px;">
+                            <form method="POST" action="{{ url_for('update_comment', invoice_id=invoice.id) }}" class="d-flex align-items-center">
+                                <input type="text" 
+                                       class="form-control form-control-sm me-1" 
+                                       name="user_comment" 
+                                       value="{{ invoice.user_comment or '' }}" 
+                                       placeholder="点击输入批注">
+                                <button type="submit" 
+                                        class="btn btn-sm btn-outline-primary" 
+                                        title="保存批注"
+                                        style="flex-shrink: 0;">
+                                    保存
+                                </button>
+                            </form>
+                        </td>
                         <td>
-                            <div class="btn-group-vertical">
-                                <form method="POST" action="{{ url_for('delete_invoice', invoice_id=invoice.id) }}" onsubmit="return confirm('确认删除该发票及其所有附件？');">
+                               <form method="POST" action="{{ url_for('delete_invoice', invoice_id=invoice.id) }}" onsubmit="return confirm('确认删除该发票及其所有附件？');">
                                     <button type="submit" class="btn btn-sm btn-danger w-100">删除发票</button>
                                 </form>
                             </div>

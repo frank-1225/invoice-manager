@@ -9,7 +9,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from io import BytesIO
 import hashlib 
 
-from flask import Flask, request, render_template, redirect, url_for, send_file, session, g
+from flask import Flask, request, render_template, redirect, url_for, send_file, session, g, flash
 from werkzeug.utils import secure_filename
 import requests 
 from functools import wraps
@@ -72,6 +72,7 @@ def get_db_connection():
             seller_tax_id TEXT,
             item_name TEXT,
             total_figuers REAL,
+            user_comment TEXT,
             reimbursement_status TEXT DEFAULT '未报销',
             pay_to_seller INTEGER DEFAULT 0  -- 0=对个人报销，1=对公转账给销售方
         )
@@ -114,6 +115,11 @@ def get_db_connection():
     if 'pay_to_seller' not in invoice_columns:
         try:
             conn.execute("ALTER TABLE invoices ADD COLUMN pay_to_seller INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+    if 'user_comment' not in invoice_columns:
+        try:
+            conn.execute("ALTER TABLE invoices ADD COLUMN user_comment TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
 
@@ -1178,7 +1184,7 @@ def admin_export():
     csv_output.write(b'\xEF\xBB\xBF') # UTF-8 BOM
     
     # --- CSV 表头 ---
-    new_header = "ID,报销人,对公转账,发票号码,开票日期,项目名称,销售方名称,销售方统一信用代码,价税合计(含税),报销状态,备注/行程单,重命名文件\n"
+    new_header = "ID,报销人,对公转账,发票号码,开票日期,项目名称,销售方名称,销售方统一信用代码,价税合计(含税),报销状态,上传人批注,发票备注,重命名文件\n"
     csv_output.write(new_header.encode('utf-8'))
     
     # CSV Data
@@ -1197,21 +1203,22 @@ def admin_export():
         
         # 核心修复点：将发票号码用双引号包裹，使其被识别为文本
         invoice_num_raw = inv.get('invoice_num') or 'N/A'
-        invoice_num = f'"{invoice_num_raw}"'
+        invoice_num = f'"\t{invoice_num_raw}"'
         
         invoice_date = inv.get('invoice_date') or 'N/A'
         item_name = inv.get('item_name') or 'N/A'
         seller_name = inv.get('seller_name') or 'N/A'
-        seller_tax_id = inv.get('seller_tax_id') or 'N/A'
+        seller_tax_id_raw = inv.get('seller_tax_id') or 'N/A'
+        seller_tax_id = f'"\t{seller_tax_id_raw}"'
         total_figuers = inv.get('total_figuers') or 0.00
         new_file_name = inv.get('new_file_name') or 'N/A'
         remarks_data = inv.get('remarks') or ''
         remarks_safe = json.dumps(remarks_data, ensure_ascii=False).strip('"')
-        
+        user_comment_safe = inv.get('user_comment', '').replace('\n', ' ').replace('\r', '')
         if inv_id is None:
             continue
             
-        row = f"{inv_id},{reimburser_name},{pay_to_seller_label},{invoice_num},{invoice_date},{item_name},{seller_name},{seller_tax_id},{total_figuers:.2f},{reimbursement_status},{remarks_safe},{new_file_name}\n"
+        row = f"{inv_id},{reimburser_name},{pay_to_seller_label},{invoice_num},{invoice_date},{item_name},{seller_name},{seller_tax_id},{total_figuers:.2f},{reimbursement_status},{user_comment_safe},{remarks_safe},{new_file_name}\n"
         csv_output.write(row.encode('utf-8'))
     
     # 文件打包
@@ -1246,6 +1253,51 @@ def admin_export():
         download_name=f'发票管理系统导出_{datetime.now().strftime("%Y%m%d%H%M%S")}.zip'
     )
 
+# 20. 更新批注（新路由）
+@app.route('/update_comment/<int:invoice_id>', methods=['POST'])
+@login_required
+def update_comment(invoice_id):
+    """用户或管理员更新发票批注"""
+    # 获取表单提交的批注内容，并去除首尾空格
+    new_comment = request.form.get('user_comment', '').strip()
+    
+    conn = get_db_connection()
+    
+    # 所有人都可以更新这个字段，但需要验证发票是否存在且权限正确
+    
+    if g.is_admin:
+        # 管理员可以更新所有发票
+        invoice = conn.execute('SELECT id FROM invoices WHERE id = ?', (invoice_id,)).fetchone()
+    else:
+        # 普通用户只能更新自己的发票
+        reimburser_name = g.user['reimburser_name']
+        invoice = conn.execute(
+            'SELECT id FROM invoices WHERE id = ? AND reimburser_name = ?', 
+            (invoice_id, reimburser_name)
+        ).fetchone()
+
+    if invoice:
+        try:
+            # 执行更新操作
+            conn.execute(
+                'UPDATE invoices SET user_comment = ? WHERE id = ?', 
+                (new_comment, invoice_id)
+            )
+            conn.commit()
+            conn.close()
+            # 成功后重定向到发票所在行的位置
+            anchor = f'#invoice-row-{invoice_id}'
+            if g.is_admin:
+                return redirect(url_for('admin_view') + anchor)
+            else:
+                return redirect(url_for('my_invoices') + anchor)
+        except Exception as e:
+            print(f"Error updating user_comment: {e}")
+            conn.close()
+            return "数据库更新失败。", 500
+    
+    conn.close()
+    return "发票未找到或您无权修改该发票。", 404
 
 if __name__ == '__main__':
     get_access_token() 

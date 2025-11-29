@@ -6,8 +6,8 @@ import json
 import time
 
 # --- 您的百度云密钥 ---
-API_KEY = "6BJMRyNEEhjQ1suFudoOnWMA"
-SECRET_KEY = "SByU8doubpbITwfs88ZnnuNcR54NCCSQ"
+API_KEY = ""
+SECRET_KEY = ""
 # ----------------------
 
 # 鉴权接口 URL
@@ -145,4 +145,5 @@ def recognize_invoice(file_content: bytes, reimburser_name: str):
         return None, None
 
 # 初始化 Access Token，确保服务启动时鉴权一次
+
 get_access_token()
